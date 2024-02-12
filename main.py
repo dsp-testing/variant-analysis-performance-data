@@ -15,7 +15,7 @@ def logs_dir_path(repo_name, run_id):
     return f"logs/{repo_name}/{run_id}"
 
 def get_log_file_names(logs_dir):
-    log_file_regex = "\d+_run \(.*\.txt"
+    log_file_regex = "\\d+_run \\(.*\\.txt"
     log_files = []
 
     for filename in os.listdir(logs_dir):
@@ -42,6 +42,12 @@ def extract_codeql_command(l):
         if f"codeql/codeql {c}" in l:
             return c
     raise Exception(f"Unable to extract codeql command from {l}")
+
+def extract_codeql_cli_server_command(l):
+    for c in known_codeql_commands:
+        if f"Running using CodeQL CLI: {c}" in l:
+            return c
+    raise Exception(f"Unable to extract codeql cli server command from {l}")
 
 def get_timing_info(log_file):
     num_repos = 0
@@ -104,6 +110,24 @@ def get_timing_info(log_file):
             
                 current_command = extract_codeql_command(l)
                 starting_command = t
+
+            elif l.startswith("##[debug]Running using CodeQL CLI: "):
+                t = extract_timestamp(line)
+
+                if starting_download is not None:
+                    download_time_s += (t - starting_download).total_seconds()
+                    starting_download = None
+
+                current_command = extract_codeql_cli_server_command(l)
+                starting_command = t
+
+            elif l == "##[debug]CLI command succeeded.\n":
+                t = extract_timestamp(line)
+
+                if current_command is not None and starting_command is not None:
+                    codeql_command_times_s[current_command] += (t - starting_command).total_seconds()
+                    current_command = None
+                    starting_command = None
 
             elif l == "##[debug]Finishing: Run query\n":
                 t = extract_timestamp(line)
